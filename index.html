@@ -93,6 +93,9 @@
         <div class="messages-box" id="messagesBox"></div>
         <div class="input-area">
             <input type="text" id="messageInput" placeholder=" SAY HELLO!" autocomplete="off">
+            <!-- ছবি সিলেক্ট করার বাটন এবং ইনপুট -->
+            <label for="fileInput" style="cursor: pointer; color: #0084ff; font-size: 1.5rem; padding-right: 5px;">🖼️</label>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
             <button id="sendBtn">Send</button>
         </div>
     </div>
@@ -100,35 +103,85 @@
     <script>
         // ১. সার্ভারের সাথে কানেক্ট করা (লোকালি টেস্ট করার জন্য localhost)
         // যখন Render-এ হোস্ট করবে, তখন নিচের লিংকের জায়গায় তোমার render-এর লিংক বসাবে
-        const socket = io("http://localhost:3000"); 
+        const socket = io("https://my-chat-web-7lqh.onrender.com"); 
 
         const messagesBox = document.getElementById('messagesBox');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
 
         // ২. স্ক্রিনে মেসেজ দেখানোর ফাংশন
-        function appendMessage(text, type) {
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add('message', type);
-            msgDiv.innerText = text;
-            messagesBox.appendChild(msgDiv);
-            messagesBox.scrollTop = messagesBox.scrollHeight; // অটো স্ক্রোল নিচে নামবে
-        }
+       function appendMessage(data, type) {
+    msgDiv = document.createElement('div');
+    msgDiv = document.createElement('div');
+    msgDiv.classList.add('message', type);
+    
+    // যদি ডাটাটি ছবি হয় তবে img ট্যাগ দেখাবে, না হলে সাধারণ টেক্সট
+    if (data.msgType === 'image') {
+        msgDiv.innerHTML = `<img src="${data.content}" style="max-width: 100%; border-radius: 10px; display: block;">`;
+    } else {
+        msgDiv.innerText = data.content;
+    }
+    
+    messagesBox.appendChild(msgDiv);
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+} // অটো স্ক্রোল নিচে নামবে
+        
 
-        // ৩. বাটনে চাপ দিলে সার্ভারে মেসেজ পাঠানো
-        sendBtn.addEventListener('click', () => {
-            const message = messageInput.value.trim();
-            if(message !== "") {
-                appendMessage(message, 'outgoing'); // নিজের স্ক্রিনে দেখাও
-                socket.emit('send_message', message); // সার্ভারে পাঠাও
-                messageInput.value = "";
-            }
-        });
+       // ৩. বাটনে চাপ দিলে সার্ভারে মেসেজ পাঠানো
+sendBtn.addEventListener('click', () => {
+    const message = messageInput.value.trim();
+    if(message !== "") {
+        const data = { msgType: 'text', content: message }; // মেসেজকে অবজেক্ট বানালাম
+        appendMessage(data, 'outgoing'); // নিজের স্ক্রিনে দেখাও
+        socket.emit('send_message', data); // সার্ভারে পাঠাও
+        messageInput.value = "";
+    }
+});
+
+// এন্টার চাপ দিলেও যেন মেসেজ যায়
+messageInput.addEventListener('keypress', (e) => {
+    if(e.key === 'Enter') sendBtn.click();
+});
 
         // এন্টার চাপ দিলেও যেন মেসেজ যায়
         messageInput.addEventListener('keypress', (e) => {
             if(e.key === 'Enter') sendBtn.click();
         });
+        const fileInput = document.getElementById('fileInput');
+
+fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // স্ক্রিনে লোডিং দেখানো
+    const loadingDiv = document.createElement('div');
+    loadingDiv.classList.add('message', 'outgoing');
+    loadingDiv.innerText = "ছবি যাচ্ছে... ⏳";
+    messagesBox.appendChild(loadingDiv);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'chat_image_preset'); // ফ্রি পাবলিক প্রিসেট
+
+    try {
+        const res = await fetch('https://api.cloudinary.com/v1_1/demo/image/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const uploadedData = await res.json();
+        
+        messagesBox.removeChild(loadingDiv); // লোডিং টেক্সট মুছে ফেলা
+
+        if (uploadedData.secure_url) {
+            const data = { msgType: 'image', content: uploadedData.secure_url };
+            appendMessage(data, 'outgoing');
+            socket.emit('send_message', data); // সার্ভারে পাঠানো
+        }
+    } catch (error) {
+        loadingDiv.innerText = "ব্যর্থ হয়েছে! ❌";
+    }
+    fileInput.value = "";
+});
 
         // ৪. সার্ভার থেকে অন্য বন্ধুদের পাঠানো মেসেজ রিসিভ করা
         socket.on('receive_message', (data) => {
